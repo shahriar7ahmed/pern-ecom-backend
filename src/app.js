@@ -1,50 +1,21 @@
 import express from 'express';
-import { z } from 'zod';
-import bcryptjs from 'bcryptjs';
-import { prisma } from './prisma.js';
+import cors from 'cors';
+import authRoutes from './routes/authRoutes.js';
+import userRoutes from './routes/userRoutes.js';
 
 const app = express();
 
+// Middleware
+app.use(cors());
 app.use(express.json());
 
-app.post('/auth/sign-up', async (req, res) => {
-    const userCreateSchema = z.object({
-        firstName: z.string().min(3),
-        lastName: z.string().min(3),
-        email: z.string().email(),
-        password: z.string().min(8),
-    });
-    
-    const result = userCreateSchema.safeParse(req.body);
+// Routes
+app.use('/auth', authRoutes);
+app.use('/users', userRoutes);
 
-    if (!result.success) {
-        return res.status(400).json({ 
-            message: 'Validation failed', 
-            errors: result.error.errors 
-        });
-    }
-
-    const passwordHash = await bcryptjs.hash(result.data.password, 10);
-
-    const user = {
-        firstName: result.data.firstName,
-        lastName: result.data.lastName,
-        email: result.data.email,
-        passwordHash: passwordHash,
-    }
-
-    try {
-        const createdUser = await prisma.user.create({
-            data: user
-        });
-
-        res.json({ user: createdUser });
-    } catch (error) {
-        if (error.code === 'P2002') {
-            return res.status(400).json({ message: 'Email already exists' });
-        }
-        res.status(500).json({ message: 'Internal server error' });
-    }
+// Health check route
+app.get('/health', (req, res) => {
+  res.json({ success: true, message: 'Server is running' });
 });
 
 export default app;
