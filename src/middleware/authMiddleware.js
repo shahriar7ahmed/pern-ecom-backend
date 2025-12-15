@@ -1,67 +1,42 @@
-import jwt from 'jsonwebtoken';
 import { prisma } from '../database/prisma.js';
+import jwt from 'jsonwebtoken';
 
-export const authMiddleware = async (req, res, next) => {
-  try {
+export const authMiddleware = (req, res, next) => {
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ 
-        status: 'error', 
-        message: 'No token provided or invalid format' 
-      });
+    if (!authHeader) {
+        return res.status(401).json({ status: 'error', message: 'Unauthorized' });
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const accessToken = authHeader.split(' ')[1];
+    const secretKey = process.env.JWT_SECRET;
+    
+    jwt.verify(accessToken, secretKey, async (err, decoded) => {
+        if (err) {
+            return res.status(401).json({ status: 'error', message: 'Unauthorized11' });
+        }
 
-    if (!process.env.JWT_SECRET) {
-      return res.status(500).json({ 
-        status: 'error', 
-        message: 'JWT_SECRET is not configured' 
-      });
-    }
+        const userId = decoded.sub;
+        
+        const user = await prisma.user.findUnique({
+            where: {
+                id: userId
+            },
+            omit: {
+                passwordHash: true
+            }
+        });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        console.log('Authenticated User:', user);
+        
+        if (!user) {
+            return res.status(404).json({ status: 'error', message: 'User not found' });
+        }
 
-    // Fetch user from database
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.sub },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+
+
+        req.user = user;
+
+        next();
     });
-
-    if (!user) {
-      return res.status(401).json({ 
-        status: 'error', 
-        message: 'User not found' 
-      });
-    }
-
-    req.user = user;
-    next();
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ 
-        status: 'error', 
-        message: 'Invalid token' 
-      });
-    }
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ 
-        status: 'error', 
-        message: 'Token expired' 
-      });
-    }
-    return res.status(500).json({ 
-      status: 'error', 
-      message: 'Authentication failed' 
-    });
-  }
-};
-
+}

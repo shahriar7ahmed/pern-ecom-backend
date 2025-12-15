@@ -14,13 +14,13 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(uuid()) @db.Uuid()
-  email        String    @unique @db.VarChar(255)
-  firstName    String    @map("first_name") @db.VarChar(100)
-  lastName     String    @map("last_name") @db.VarChar(100)
-  passwordHash String    @map("password_hash") @db.VarChar(255)
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id           String        @id @default(uuid()) @db.Uuid()
+  email        String        @unique @db.VarChar(255)
+  firstName    String        @map("first_name") @db.VarChar(100)
+  lastName     String        @map("last_name") @db.VarChar(100)
+  passwordHash String        @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
   orders       Order[]
   addresses    UserAddress[]
 
@@ -28,14 +28,14 @@ model User {
 }
 
 model UserAddress {
-  id        String   @id @default(uuid()) @db.Uuid()
-  userId    String   @map("user_id") @db.Uuid()
-  user      User     @relation(fields: [userId], references: [id])
-  address   String   @db.Text
-  city      String   @db.VarChar(100)
-  postalCode String  @map("postal_code") @db.VarChar(20)
-  country   String   @db.VarChar(100)
-  createdAt DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid()) @db.Uuid()
+  userId     String   @map("user_id") @db.Uuid()
+  user       User     @relation(fields: [userId], references: [id])
+  address    String   @db.Text
+  city       String   @db.VarChar(100)
+  postalCode String   @map("postal_code") @db.VarChar(20)
+  country    String   @db.VarChar(100)
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("user_addresses")
 }
@@ -80,13 +80,13 @@ model Order {
 }
 
 model OrderItem {
-  id        String   @id @default(uuid()) @db.Uuid()
-  orderId   String   @map("order_id") @db.Uuid()
-  order     Order    @relation(fields: [orderId], references: [id])
-  productId String   @map("product_id") @db.Uuid()
-  product   Product  @relation(fields: [productId], references: [id])
+  id        String  @id @default(uuid()) @db.Uuid()
+  orderId   String  @map("order_id") @db.Uuid()
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId String  @map("product_id") @db.Uuid()
+  product   Product @relation(fields: [productId], references: [id])
   quantity  Int
-  price     Decimal  @db.Decimal(10, 2)
+  price     Decimal @db.Decimal(10, 2)
 
   @@map("order_items")
 }
