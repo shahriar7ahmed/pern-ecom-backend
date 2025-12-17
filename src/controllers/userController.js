@@ -1,216 +1,132 @@
-import { prisma } from "../database/prisma.js";
-import { z } from "zod";
+import { prisma } from '../database/prisma.js';
+import asyncHandler from '../utils/asyncHandler.js';
+import ApiResponse from '../utils/apiResponse.js';
+import { HTTP_STATUS } from '../constants/httpStatus.js';
+import { MESSAGES } from '../constants/messages.js';
+import { updateUserSchema, userIdSchema } from '../validators/userValidator.js';
 
-export const getAllUsers = async (req, res) => {
-    try {
-        const users = await prisma.user.findMany({
+/**
+ * Get all users with pagination
+ * @route GET /api/users
+ */
+export const getAllUsers = asyncHandler(async (req, res) => {
+    const { page = 1, limit = 20, role } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const where = {};
+    if (role) where.role = role;
+
+    const [users, total] = await Promise.all([
+        prisma.user.findMany({
+            where,
             select: {
                 id: true,
                 email: true,
                 firstName: true,
                 lastName: true,
+                role: true,
                 createdAt: true,
-                updatedAt: true,
+                updatedAt: true
             },
-            orderBy: {
-                createdAt: 'desc'
-            }
-        });
-        res.json({ 
-            status: 'success', 
-            message: 'Users fetched successfully', 
-            data: { users } 
-        });
-    } catch (error) {
-        console.error('Get all users error:', error);
-        res.status(500).json({ 
-            status: 'error',
-            message: 'Internal server error' 
-        });
+            skip,
+            take,
+            orderBy: { createdAt: 'desc' }
+        }),
+        prisma.user.count({ where })
+    ]);
+
+    ApiResponse.success(res, {
+        users,
+        pagination: {
+            total,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            pages: Math.ceil(total / take)
+        }
+    }, 'Users fetched successfully');
+});
+
+/**
+ * Get user by ID
+ * @route GET /api/users/:id
+ */
+export const getUserById = asyncHandler(async (req, res) => {
+    const { success, data } = userIdSchema.safeParse({ id: req.params.id });
+
+    if (!success) {
+        return ApiResponse.error(res, 'Invalid user ID format', HTTP_STATUS.BAD_REQUEST);
     }
-}
 
-export const getUserById = async (req, res) => {
-    try {
-        const userId = req.params.id;
-
-        const userGetSchema = z.object({
-            id: z.string().uuid(),
-        });
-
-        const result = userGetSchema.safeParse({
-            id: userId,
-        });
-
-        if (!result.success) {
-            return res.status(400).json({ 
-                status: 'error',
-                message: 'Validation failed', 
-                errors: result.error.errors 
-            });
+    const user = await prisma.user.findUnique({
+        where: { id: data.id },
+        select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true
         }
+    });
 
-        const user = await prisma.user.findUnique({
-            where: {
-                id: userId
-            },
-            select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                createdAt: true,
-                updatedAt: true,
-            }
-        });
-
-        if (!user) {
-            return res.status(404).json({ 
-                status: 'error', 
-                message: 'User not found' 
-            });
-        }
-
-        res.json({ 
-            status: 'success', 
-            message: 'User fetched successfully', 
-            data: { user } 
-        });
-    } catch (error) {
-        console.error('Get user by id error:', error);
-        res.status(500).json({ 
-            status: 'error',
-            message: 'Internal server error' 
-        });
+    if (!user) {
+        return ApiResponse.notFound(res, MESSAGES.USER_NOT_FOUND);
     }
-}
 
-export const updateUser = async (req, res) => {
-    try {
-        const userId = req.params.id;
+    ApiResponse.success(res, { user }, 'User fetched successfully');
+});
 
-        const userUpdateSchema = z.object({
-            id: z.string().uuid(),
-            firstName: z.string().min(3).optional(),
-            lastName: z.string().min(3).optional(),
-        });
+/**
+ * Update user
+ * @route PATCH /api/users/:id
+ */
+export const updateUser = asyncHandler(async (req, res) => {
+    const { success: idSuccess, data: idData } = userIdSchema.safeParse({ id: req.params.id });
 
-        const result = userUpdateSchema.safeParse({
-            id: userId,
-            firstName: req.body.firstName,
-            lastName: req.body.lastName,
-        });
-
-        if (!result.success) {
-            return res.status(400).json({ 
-                status: 'error',
-                message: 'Validation failed', 
-                errors: result.error.errors 
-            });
-        }
-
-        // Check if user exists
-        const existingUser = await prisma.user.findUnique({
-            where: { id: userId }
-        });
-
-        if (!existingUser) {
-            return res.status(404).json({ 
-                status: 'error',
-                message: 'User not found' 
-            });
-        }
-
-        const updateData = {};
-        if (result.data.firstName) updateData.firstName = result.data.firstName;
-        if (result.data.lastName) updateData.lastName = result.data.lastName;
-
-        const updatedUser = await prisma.user.update({
-            where: {
-                id: userId
-            },
-            data: updateData,
-            select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                createdAt: true,
-                updatedAt: true,
-            }
-        });
-
-        res.json({ 
-            status: 'success', 
-            message: 'User updated successfully', 
-            data: { user: updatedUser } 
-        });
-    } catch (error) {
-        console.error('Update user error:', error);
-        res.status(500).json({ 
-            status: 'error',
-            message: 'Internal server error' 
-        });
+    if (!idSuccess) {
+        return ApiResponse.error(res, 'Invalid user ID format', HTTP_STATUS.BAD_REQUEST);
     }
-}
 
-export const deleteUser = async (req, res) => {
-    try {
-        const userId = req.params.id;
+    const { success: bodySuccess, data: bodyData, error } = updateUserSchema.safeParse(req.body);
 
-        const userDeleteSchema = z.object({
-            id: z.string().uuid(),
-        });
-
-        const result = userDeleteSchema.safeParse({
-            id: userId,
-        });
-
-        if (!result.success) {
-            return res.status(400).json({ 
-                status: 'error',
-                message: 'Validation failed', 
-                errors: result.error.errors 
-            });
-        }
-        
-        const user = await prisma.user.findUnique({
-            where: {
-                id: userId
-            }
-        });
-
-        if (!user) {
-            return res.status(404).json({ 
-                status: 'error', 
-                message: 'User not found' 
-            });
-        }
-
-        const deletedUser = await prisma.user.delete({
-            where: {
-                id: userId
-            },
-            select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                createdAt: true,
-                updatedAt: true,
-            }
-        });
-        
-        res.json({ 
-            status: 'success', 
-            message: 'User deleted successfully', 
-            data: { user: deletedUser } 
-        });
-    } catch (error) {
-        console.error('Delete user error:', error);
-        res.status(500).json({ 
-            status: 'error',
-            message: 'Internal server error' 
-        });
+    if (!bodySuccess) {
+        return ApiResponse.validationError(res, error.errors);
     }
-}
+
+    const user = await prisma.user.update({
+        where: { id: idData.id },
+        data: bodyData,
+        select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true
+        }
+    });
+
+    ApiResponse.success(res, { user }, MESSAGES.USER_UPDATED);
+});
+
+/**
+ * Delete user
+ * @route DELETE /api/users/:id
+ */
+export const deleteUser = asyncHandler(async (req, res) => {
+    const { success, data } = userIdSchema.safeParse({ id: req.params.id });
+
+    if (!success) {
+        return ApiResponse.error(res, 'Invalid user ID format', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    await prisma.user.delete({
+        where: { id: data.id }
+    });
+
+    ApiResponse.success(res, {}, MESSAGES.USER_DELETED);
+});

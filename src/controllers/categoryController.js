@@ -1,158 +1,178 @@
+import { prisma } from '../database/prisma.js';
+import asyncHandler from '../utils/asyncHandler.js';
+import ApiResponse from '../utils/apiResponse.js';
+import { HTTP_STATUS } from '../constants/httpStatus.js';
+import { MESSAGES } from '../constants/messages.js';
+import {
+  createCategorySchema,
+  updateCategorySchema,
+  categoryIdSchema
+} from '../validators/categoryValidator.js';
 
-import { prisma } from "../database/prisma.js";
-import { z } from "zod";
+/**
+ * Get all categories with pagination
+ * @route GET /api/categories
+ */
+export const getAllCategories = asyncHandler(async (req, res) => {
+  const { page = 1, limit = 20, parentId } = req.query;
 
-export const getAllCategory = async (req, res) => {
-  const categories = await prisma.category.findMany()
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const take = parseInt(limit);
 
-  res.json({
-    status: 'success',
-    message: 'Category fetched Successfully',
-    data: { categories }
-  })
-}
+  // Build where clause
+  const where = {};
+  if (parentId) where.parentId = parentId;
+  if (parentId === 'null') where.parentId = null; // Root categories
 
-export const getACategory = async (req, res) => {
-  const categoryId = req.params.id;
+  const [categories, total] = await Promise.all([
+    prisma.category.findMany({
+      where,
+      include: {
+        parent: true,
+        subcategories: true,
+        _count: {
+          select: { products: true }
+        }
+      },
+      skip,
+      take,
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.category.count({ where })
+  ]);
 
-  const categorySchema = z.object({
-    id: z.uuid()
-  })
-  
-  const { success, data, error } = categorySchema.safeParse({ id: categoryId });
+  ApiResponse.success(res, {
+    categories,
+    pagination: {
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      pages: Math.ceil(total / take)
+    }
+  }, MESSAGES.FETCHED);
+});
 
-  if (!success){
-    res.status(400).json({
-      status: 'error',
-      message: 'Bad request',
-    })
+/**
+ * Get category by ID
+ * @route GET /api/categories/:id
+ */
+export const getCategoryById = asyncHandler(async (req, res) => {
+  const { success, data } = categoryIdSchema.safeParse({ id: req.params.id });
+
+  if (!success) {
+    return ApiResponse.error(res, 'Invalid category ID format', HTTP_STATUS.BAD_REQUEST);
   }
 
   const category = await prisma.category.findUnique({
-    where: { id: categoryId }
-  })
+    where: { id: data.id },
+    include: {
+      parent: true,
+      subcategories: true,
+      products: {
+        take: 10,
+        include: {
+          images: {
+            where: { isPrimary: true },
+            take: 1
+          }
+        }
+      }
+    }
+  });
 
   if (!category) {
-    return res.status(404).json({
-      status: 'error',
-      message: 'Category not found',
-    })
+    return ApiResponse.notFound(res, MESSAGES.CATEGORY_NOT_FOUND);
   }
 
-  res.json({
-    status: 'success',
-    message: 'Category fetched Successfully',
-    data: { category }
-  })
-}
+  ApiResponse.success(res, { category }, MESSAGES.FETCHED);
+});
 
-export const createCategory = async (req, res) =>{
+/**
+ * Create new category
+ * @route POST /api/categories
+ */
+export const createCategory = asyncHandler(async (req, res) => {
+  const { success, data, error } = createCategorySchema.safeParse(req.body);
 
-  const categoryCreateSchema = z.object({
-    name: z.string().min(3),
-    description: z.string().min(5)
-  })
-
-  const { success, data, error } = categoryCreateSchema.safeParse(req.body);
-
-  // validation failed 
-  if (!success){
-    res.status(400).json({
-      status: 'error',
-      message: 'Bad request',
-    })
+  if (!success) {
+    return ApiResponse.validationError(res, error.errors);
   }
 
-  const categoryPayload = {
-    name: data.name,
-    description: data.description
+  // If parentId is provided, check if parent exists
+  if (data.parentId) {
+    const parentCategory = await prisma.category.findUnique({
+      where: { id: data.parentId }
+    });
+
+    if (!parentCategory) {
+      return ApiResponse.notFound(res, 'Parent category not found');
+    }
   }
 
-  const createdCategory = await prisma.category.create({
-    data: categoryPayload
-  })
+  const category = await prisma.category.create({
+    data,
+    include: {
+      parent: true
+    }
+  });
 
-  res.json({
-    status: 'success',
-    message: 'Category created Successfully',
-    data: { category: createdCategory }
-  })
+  ApiResponse.success(res, { category }, MESSAGES.CATEGORY_CREATED, HTTP_STATUS.CREATED);
+});
 
-}
+/**
+ * Update category
+ * @route PUT /api/categories/:id
+ */
+export const updateCategory = asyncHandler(async (req, res) => {
+  const { success: idSuccess, data: idData } = categoryIdSchema.safeParse({ id: req.params.id });
 
-export const updateCategory = async (req, res) =>{
-  const categoryId = req.params.id;
-
-
-  const categorySchema = z.object({
-    id: z.uuid()
-  })
-  
-  const { success: paramSuccess, data: paramData, error: paramError } = categorySchema.safeParse({ id: categoryId });
-
-  if (!paramSuccess){
-    res.status(400).json({
-      status: 'error',
-      message: 'Bad request',
-    })
-  } 
-
-
-  const categoryUpdateSchema = z.object({
-    name: z.string().min(3).optional(),
-    description: z.string().min(5).optional()
-  })
-
-  const { success: bodySuccess, data: bodyData, error: bodyError } = categoryUpdateSchema.safeParse(req.body);
-
-
-  // validation failed 
-  if (!bodySuccess){
-    res.status(400).json({
-      status: 'error',
-      message: 'Bad request',
-    })
+  if (!idSuccess) {
+    return ApiResponse.error(res, 'Invalid category ID format', HTTP_STATUS.BAD_REQUEST);
   }
 
+  const { success: bodySuccess, data: bodyData, error } = updateCategorySchema.safeParse(req.body);
 
-  // valid update data and valid category id
-  const updatedCategory = await prisma.category.update({
-    where: { id: categoryId },
-    data: bodyData
-  })
-
-  res.json({
-    status: 'success',
-    message: 'Category updated Successfully',
-    data: { category: updatedCategory }
-  })
-
-}
-
-export const deleteCategory = async (req, res) =>{
-  const categoryId = req.params.id;
-
-  const categorySchema = z.object({
-    id: z.uuid()
-  })
-  
-  const { success, data, error } = categorySchema.safeParse({ id: categoryId });
-
-  if (!success){
-    res.status(400).json({
-      status: 'error',
-      message: 'Bad request',
-    })
+  if (!bodySuccess) {
+    return ApiResponse.validationError(res, error.errors);
   }
 
-  // we have valid category id
-  const deletedCategory = await prisma.category.delete({
-    where: { id: categoryId }
-  })
+  // If parentId is being updated, verify it exists
+  if (bodyData.parentId) {
+    const parentCategory = await prisma.category.findUnique({
+      where: { id: bodyData.parentId }
+    });
 
-  res.json({
-    status: 'success',
-    message: 'Category deleted Successfully',
-    data: { category: deletedCategory }
-  })
-}
+    if (!parentCategory) {
+      return ApiResponse.notFound(res, 'Parent category not found');
+    }
+  }
+
+  const category = await prisma.category.update({
+    where: { id: idData.id },
+    data: bodyData,
+    include: {
+      parent: true,
+      subcategories: true
+    }
+  });
+
+  ApiResponse.success(res, { category }, MESSAGES.CATEGORY_UPDATED);
+});
+
+/**
+ * Delete category
+ * @route DELETE /api/categories/:id
+ */
+export const deleteCategory = asyncHandler(async (req, res) => {
+  const { success, data } = categoryIdSchema.safeParse({ id: req.params.id });
+
+  if (!success) {
+    return ApiResponse.error(res, 'Invalid category ID format', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  await prisma.category.delete({
+    where: { id: data.id }
+  });
+
+  ApiResponse.success(res, {}, MESSAGES.CATEGORY_DELETED);
+});

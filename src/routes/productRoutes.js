@@ -1,14 +1,15 @@
-import { Router } from "express";
-import { getAllProduct, getAProduct, createProduct, updateProduct, deleteProduct } from '../controllers/productController.js'
-import { authMiddleware } from "../middleware/authMiddleware.js";
-import { adminMiddleware } from "../middleware/adminMiddleware.js";
+import { Router } from 'express';
+import { getAllProducts, getProductById, createProduct, updateProduct, deleteProduct } from '../controllers/productController.js';
+import { authMiddleware } from '../middleware/authMiddleware.js';
+import { adminMiddleware } from '../middleware/adminMiddleware.js';
 
 const router = Router();
 
-router.get('/', getAllProduct);
-router.get('/:id', getAProduct);
+// Public routes
+router.get('/', getAllProducts);
+router.get('/:id', getProductById);
 
-// app.js -> router -> auth-middleware -> admin -middleware -> controller -> data-return
+// Admin routes (requires authentication + admin role)
 router.post('/', authMiddleware, adminMiddleware, createProduct);
 router.put('/:id', authMiddleware, adminMiddleware, updateProduct);
 router.delete('/:id', authMiddleware, adminMiddleware, deleteProduct);

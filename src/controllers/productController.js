@@ -1,171 +1,181 @@
-import { prisma } from '../database/prisma.js'
-import { z } from 'zod'
+import { prisma } from '../database/prisma.js';
+import asyncHandler from '../utils/asyncHandler.js';
+import ApiResponse from '../utils/apiResponse.js';
+import { HTTP_STATUS } from '../constants/httpStatus.js';
+import { MESSAGES } from '../constants/messages.js';
+import {
+  createProductSchema,
+  updateProductSchema,
+  productIdSchema
+} from '../validators/productValidator.js';
 
-export const getAllProduct = async (req, res) =>{
+/**
+ * Get all products with pagination and filtering
+ * @route GET /api/products
+ */
+export const getAllProducts = asyncHandler(async (req, res) => {
+  const { page = 1, limit = 10, categoryId, isFeatured, isActive, search } = req.query;
 
-  const products = await prisma.product.findMany()
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const take = parseInt(limit);
 
-  res.json({
-    status: 'success',
-    message: 'Product fetched Successfully',
-    data: { products }
-  })
-}
-
-export const getAProduct = async (req, res) =>{
-  const productId = req.params.id;
-
-  const productSchema = z.object({
-    id: z.uuid()
-  })
-  
-  const { success, data, error } = productSchema.safeParse({ id: productId });
-
-  if (!success){
-    res.status(400).json({
-      status: 'error',
-      message: 'Bad request',
-    })
+  // Build where clause
+  const where = {};
+  if (categoryId) where.categoryId = categoryId;
+  if (isFeatured !== undefined) where.isFeatured = isFeatured === 'true';
+  if (isActive !== undefined) where.isActive = isActive === 'true';
+  if (search) {
+    where.OR = [
+      { title: { contains: search, mode: 'insensitive' } },
+      { description: { contains: search, mode: 'insensitive' } }
+    ];
   }
 
+  const [products, total] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      include: {
+        category: true,
+        images: {
+          where: { isPrimary: true },
+          take: 1
+        },
+        _count: {
+          select: { variants: true }
+        }
+      },
+      skip,
+      take,
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.product.count({ where })
+  ]);
+
+  ApiResponse.success(res, {
+    products,
+    pagination: {
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      pages: Math.ceil(total / take)
+    }
+  }, MESSAGES.FETCHED);
+});
+
+/**
+ * Get single product by ID
+ * @route GET /api/products/:id
+ */
+export const getProductById = asyncHandler(async (req, res) => {
+  const { success, data } = productIdSchema.safeParse({ id: req.params.id });
+
+  if (!success) {
+    return ApiResponse.error(res, 'Invalid product ID format', HTTP_STATUS.BAD_REQUEST);
+  }
 
   const product = await prisma.product.findUnique({
-    where: { id: productId }
-  })
+    where: { id: data.id },
+    include: {
+      category: true,
+      images: {
+        orderBy: { displayOrder: 'asc' }
+      },
+      variants: true
+    }
+  });
 
   if (!product) {
-    return res.status(404).json({
-      status: 'error',
-      message: 'Product not found',
-    })
+    return ApiResponse.notFound(res, MESSAGES.PRODUCT_NOT_FOUND);
   }
 
-  res.json({
-    status: 'success',
-    message: 'Product fetched Successfully',
-    data: { product }
-  })
-}
+  ApiResponse.success(res, { product }, MESSAGES.FETCHED);
+});
 
-export const createProduct = async (req, res) =>{
-  const productCreateSchema = z.object({
-    name: z.string().min(3),
-    description: z.string().min(5),
-    price: z.number().positive(),
-    stock: z.number().int(),
-    categoryId: z.uuid()
-  })
+/**
+ * Create new product
+ * @route POST /api/products
+ */
+export const createProduct = asyncHandler(async (req, res) => {
+  const { success, data, error } = createProductSchema.safeParse(req.body);
 
-  const { success, data, error } = productCreateSchema.safeParse(req.body);
-
-  // validation failed 
-  if (!success){
-    res.status(400).json({
-      status: 'error',
-      message: 'Bad request payload should have name, description, price, stock and categoryId',
-    })
+  if (!success) {
+    return ApiResponse.validationError(res, error.errors);
   }
 
-  // check if valid category
+  // Check if category exists
   const category = await prisma.category.findUnique({
     where: { id: data.categoryId }
-  })
+  });
 
-  if(!category){
-    res.json({
-      status: 'error',
-      message: 'Bad request'
-    })
+  if (!category) {
+    return ApiResponse.notFound(res, MESSAGES.CATEGORY_NOT_FOUND);
   }
 
-  const productPayload = {
-    name: data.name,
-    description: data.description,
-    price: data.price,
-    stock: data.stock,
-    categoryId: data.categoryId
+  const product = await prisma.product.create({
+    data,
+    include: {
+      category: true
+    }
+  });
+
+  ApiResponse.success(res, { product }, MESSAGES.PRODUCT_CREATED, HTTP_STATUS.CREATED);
+});
+
+/**
+ * Update product
+ * @route PUT /api/products/:id
+ */
+export const updateProduct = asyncHandler(async (req, res) => {
+  const { success: idSuccess, data: idData } = productIdSchema.safeParse({ id: req.params.id });
+
+  if (!idSuccess) {
+    return ApiResponse.error(res, 'Invalid product ID format', HTTP_STATUS.BAD_REQUEST);
   }
 
-  const createdProduct = await prisma.product.create({
-    data: productPayload
-  })
+  const { success: bodySuccess, data: bodyData, error } = updateProductSchema.safeParse(req.body);
 
-  res.json({
-    status: 'success',
-    message: 'Product Created Successfully',
-    data: {product: createdProduct}
-  })
-
-}
-
-export const updateProduct = async (req, res) =>{
-  const productId = req.params.id;
-
-  const productSchema = z.object({
-    id: z.uuid()
-  })
-  
-  const { success: paramSuccess, data: paramData, error: paramError } = productSchema.safeParse({ id: productId });
-
-  if (!paramSuccess){
-    res.status(400).json({
-      status: 'error',
-      message: 'Bad request',
-    })
+  if (!bodySuccess) {
+    return ApiResponse.validationError(res, error.errors);
   }
 
-  const productUpdateSchema = z.object({
-    name: z.string().min(3).optional(),
-    description: z.string().min(5).optional(),
-    price: z.number().positive().optional(),
-    stock: z.number().int().optional(),
-    categoryId: z.uuid().optional()
-  })
+  // If categoryId is being updated, verify it exists
+  if (bodyData.categoryId) {
+    const category = await prisma.category.findUnique({
+      where: { id: bodyData.categoryId }
+    });
 
-  const { success: bodySuccess, data: bodyData, error: bodyError } = productUpdateSchema.safeParse(req.body);
-
-  if (!bodySuccess){
-    res.status(400).json({
-      status: 'error',
-      message: 'Bad request payload should have name, description, price, stock and categoryId',
-    })
+    if (!category) {
+      return ApiResponse.notFound(res, MESSAGES.CATEGORY_NOT_FOUND);
+    }
   }
 
-  const updatedProduct = await prisma.product.update({
-    where: { id: productId },
-    data: bodyData
-  })
+  const product = await prisma.product.update({
+    where: { id: idData.id },
+    data: bodyData,
+    include: {
+      category: true,
+      images: true,
+      variants: true
+    }
+  });
 
-  res.json({
-    status: 'success',
-    message: 'Product Updated Successfully',
-    data: { product: updatedProduct }
-  })
-}
+  ApiResponse.success(res, { product }, MESSAGES.PRODUCT_UPDATED);
+});
 
-export const deleteProduct = async (req, res) =>{
-  const productId = req.params.id;
+/**
+ * Delete product
+ * @route DELETE /api/products/:id
+ */
+export const deleteProduct = asyncHandler(async (req, res) => {
+  const { success, data } = productIdSchema.safeParse({ id: req.params.id });
 
-  const productSchema = z.object({
-    id: z.uuid()
-  })
-  
-  const { success, data, error } = productSchema.safeParse({ id: productId });
-
-  if (!success){
-    res.status(400).json({
-      status: 'error',
-      message: 'Bad request',
-    })
+  if (!success) {
+    return ApiResponse.error(res, 'Invalid product ID format', HTTP_STATUS.BAD_REQUEST);
   }
 
-  const deletedProduct = await prisma.product.delete({
-    where: { id: productId }
-  })
+  await prisma.product.delete({
+    where: { id: data.id }
+  });
 
-  res.json({
-    status: 'success',
-    message: 'Product Deleted Successfully',
-    data: { product: deletedProduct }
-  })
-}
+  ApiResponse.success(res, {}, MESSAGES.PRODUCT_DELETED);
+});
