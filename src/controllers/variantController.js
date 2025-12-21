@@ -103,6 +103,15 @@ export const updateVariant = asyncHandler(async (req, res) => {
         return ApiResponse.validationError(res, error.errors);
     }
 
+    // Check if variant exists
+    const existingVariant = await prisma.productVariant.findUnique({
+        where: { id: idData.id }
+    });
+
+    if (!existingVariant) {
+        return ApiResponse.notFound(res, 'Variant not found');
+    }
+
     const variant = await prisma.productVariant.update({
         where: { id: idData.id },
         data: bodyData,
@@ -123,6 +132,15 @@ export const deleteVariant = asyncHandler(async (req, res) => {
 
     if (!success) {
         return ApiResponse.error(res, 'Invalid variant ID format', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    // Check if variant exists
+    const existingVariant = await prisma.productVariant.findUnique({
+        where: { id: data.id }
+    });
+
+    if (!existingVariant) {
+        return ApiResponse.notFound(res, 'Variant not found');
     }
 
     await prisma.productVariant.delete({

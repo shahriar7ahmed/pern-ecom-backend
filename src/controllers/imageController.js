@@ -104,6 +104,15 @@ export const updateImage = asyncHandler(async (req, res) => {
         return ApiResponse.validationError(res, error.errors);
     }
 
+    // Check if image exists
+    const existingImage = await prisma.productImage.findUnique({
+        where: { id: idData.id }
+    });
+
+    if (!existingImage) {
+        return ApiResponse.notFound(res, 'Image not found');
+    }
+
     const image = await prisma.productImage.update({
         where: { id: idData.id },
         data: bodyData,
@@ -124,6 +133,15 @@ export const deleteImage = asyncHandler(async (req, res) => {
 
     if (!success) {
         return ApiResponse.error(res, 'Invalid image ID format', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    // Check if image exists
+    const existingImage = await prisma.productImage.findUnique({
+        where: { id: data.id }
+    });
+
+    if (!existingImage) {
+        return ApiResponse.notFound(res, 'Image not found');
     }
 
     await prisma.productImage.delete({
