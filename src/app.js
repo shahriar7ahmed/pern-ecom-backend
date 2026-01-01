@@ -15,6 +15,7 @@ import categoryRoutes from './routes/categoryRoutes.js';
 import cartRoutes from './routes/cartRoutes.js';
 import imageRoutes from './routes/imageRoutes.js';
 import variantRoutes from './routes/variantRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
 
 const app = express();
 
@@ -58,6 +59,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/images', imageRoutes);
 app.use('/api/variants', variantRoutes);
+app.use('/api/orders', orderRoutes);
 
 // 404 handler (must be after all routes)
 app.use(notFoundHandler);

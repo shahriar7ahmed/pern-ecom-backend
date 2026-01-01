@@ -27,45 +27,47 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
   role         UserRole @default(CUSTOMER)
-  
-  cart Cart[]
+
+  cart   Cart[]
+  orders Order[]
 
   @@map("users")
 }
 
 model Product {
-  id               String    @id @default(uuid()) @db.Uuid()
-  title            String    @db.VarChar(255)
-  slug             String    @unique @db.VarChar(255)
-  description      String    @db.Text
-  basePrice        Float     @map("base_price")
-  originalPrice    Float?    @map("original_price")
-  stockQuantity    Int       @default(0) @map("stock_quantity")
-  specifications   Json
-  isFeatured       Boolean   @default(false) @map("is_featured")
-  isActive         Boolean   @default(true) @map("is_active")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  categoryId       String    @map("category_id") @db.Uuid()
-  
-  category  Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  images    ProductImage[]
-  variants  ProductVariant[]
-  cartItems CartItem[]
+  id             String   @id @default(uuid()) @db.Uuid()
+  title          String   @db.VarChar(255)
+  slug           String   @unique @db.VarChar(255)
+  description    String   @db.Text
+  basePrice      Float    @map("base_price")
+  originalPrice  Float?   @map("original_price")
+  stockQuantity  Int      @default(0) @map("stock_quantity")
+  specifications Json
+  isFeatured     Boolean  @default(false) @map("is_featured")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  categoryId     String   @map("category_id") @db.Uuid()
+
+  category   Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  images     ProductImage[]
+  variants   ProductVariant[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
 
   @@map("products")
 }
 
 model Category {
-  id          String     @id @default(uuid()) @db.Uuid()
-  name        String     @db.VarChar(100)
-  slug        String     @unique @db.VarChar(255)
-  description String     @db.Text
-  imageUrl    String     @map("image_url") @db.VarChar(255)
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
-  parentId    String?    @map("parent_id") @db.Uuid()
-  
+  id          String   @id @default(uuid()) @db.Uuid()
+  name        String   @db.VarChar(100)
+  slug        String   @unique @db.VarChar(255)
+  description String   @db.Text
+  imageUrl    String   @map("image_url") @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  parentId    String?  @map("parent_id") @db.Uuid()
+
   parent        Category?  @relation("CategoryToCategory", fields: [parentId], references: [id], onDelete: Cascade)
   subcategories Category[] @relation("CategoryToCategory")
   products      Product[]
@@ -82,7 +84,7 @@ model ProductImage {
   isPrimary    Boolean  @default(false) @map("is_primary")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
-  
+
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("product_images")
@@ -98,7 +100,7 @@ model ProductVariant {
   imageUrl        String?  @map("image_url") @db.VarChar(255)
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
-  
+
   product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
   cartItems CartItem[]
 
@@ -111,7 +113,7 @@ model Cart {
   sessionId String?  @map("session_id") @db.VarChar(255)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
-  
+
   user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
   cartItems CartItem[]
 
@@ -125,10 +127,50 @@ model CartItem {
   variantId String?  @map("variant_id") @db.Uuid()
   quantity  Int      @default(1)
   addedAt   DateTime @default(now()) @map("added_at")
-  
+
   cart    Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
   product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
   variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
 
   @@map("cart_items")
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model Order {
+  id                      String      @id @default(uuid()) @db.Uuid()
+  userId                  String      @map("user_id") @db.Uuid()
+  totalAmount             Float       @map("total_amount")
+  status                  OrderStatus @default(PENDING)
+  shippingAddressSnapshot Json        @map("shipping_address_snapshot")
+  paymentMethod           String      @map("payment_method") @db.VarChar(100)
+  createdAt               DateTime    @default(now()) @map("created_at")
+  updatedAt               DateTime    @updatedAt @map("updated_at")
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id              String  @id @default(uuid()) @db.Uuid()
+  orderId         String  @map("order_id") @db.Uuid()
+  productId       String? @map("product_id") @db.Uuid()
+  productSnapshot Json    @map("product_snapshot")
+  variantSnapshot Json?   @map("variant_snapshot")
+  quantity        Int
+  priceAtPurchase Float   @map("price_at_purchase")
+  totalPrice      Float   @map("total_price")
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@map("order_items")
 }

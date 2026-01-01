@@ -198,12 +198,39 @@ exports.Prisma.CartItemScalarFieldEnum = {
   addedAt: 'addedAt'
 };
 
+exports.Prisma.OrderScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  totalAmount: 'totalAmount',
+  status: 'status',
+  shippingAddressSnapshot: 'shippingAddressSnapshot',
+  paymentMethod: 'paymentMethod',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.OrderItemScalarFieldEnum = {
+  id: 'id',
+  orderId: 'orderId',
+  productId: 'productId',
+  productSnapshot: 'productSnapshot',
+  variantSnapshot: 'variantSnapshot',
+  quantity: 'quantity',
+  priceAtPurchase: 'priceAtPurchase',
+  totalPrice: 'totalPrice'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
 };
 
 exports.Prisma.JsonNullValueInput = {
+  JsonNull: Prisma.JsonNull
+};
+
+exports.Prisma.NullableJsonNullValueInput = {
+  DbNull: Prisma.DbNull,
   JsonNull: Prisma.JsonNull
 };
 
@@ -227,6 +254,14 @@ exports.UserRole = exports.$Enums.UserRole = {
   CUSTOMER: 'CUSTOMER'
 };
 
+exports.OrderStatus = exports.$Enums.OrderStatus = {
+  PENDING: 'PENDING',
+  PROCESSING: 'PROCESSING',
+  SHIPPED: 'SHIPPED',
+  DELIVERED: 'DELIVERED',
+  CANCELLED: 'CANCELLED'
+};
+
 exports.Prisma.ModelName = {
   User: 'User',
   Product: 'Product',
@@ -234,7 +269,9 @@ exports.Prisma.ModelName = {
   ProductImage: 'ProductImage',
   ProductVariant: 'ProductVariant',
   Cart: 'Cart',
-  CartItem: 'CartItem'
+  CartItem: 'CartItem',
+  Order: 'Order',
+  OrderItem: 'OrderItem'
 };
 
 /**
