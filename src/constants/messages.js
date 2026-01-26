@@ -51,4 +51,12 @@ export const MESSAGES = {
     CART_ITEM_UPDATED: 'Cart item updated successfully',
     CART_ITEM_REMOVED: 'Item removed from cart successfully',
     CART_CLEARED: 'Cart cleared successfully',
+
+    // Order messages
+    ORDER_NOT_FOUND: 'Order not found',
+    ORDER_CREATED: 'Order created successfully',
+    ORDER_UPDATED: 'Order updated successfully',
+    ORDER_DELETED: 'Order deleted successfully',
+    ORDER_CANNOT_UPDATE: 'Cannot update order in current status',
+    INVALID_STATUS_TRANSITION: 'Invalid order status transition',
 };

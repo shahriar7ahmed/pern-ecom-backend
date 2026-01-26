@@ -77,19 +77,19 @@ export const createOrder = async (req, res) => {
     });
 
     // add order items
-//      model OrderItem {
-//   id String @id @default(uuid()) @db.Uuid()
-//   orderId String @db.Uuid()
-//   productId String? @db.Uuid()
-//   productSnapshot Json
-//   variantSnapshot Json?
-//   quantity Int
-//   priceAtPurchase Float
-//   totalPrice Float
+    //      model OrderItem {
+    //   id String @id @default(uuid()) @db.Uuid()
+    //   orderId String @db.Uuid()
+    //   productId String? @db.Uuid()
+    //   productSnapshot Json
+    //   variantSnapshot Json?
+    //   quantity Int
+    //   priceAtPurchase Float
+    //   totalPrice Float
 
-//   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-//   product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-// }
+    //   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+    //   product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+    // }
     const orderItemsData = cart.cartItems.map((item) => {
 
       const originalPrice = item.product.originalPrice;
@@ -104,11 +104,11 @@ export const createOrder = async (req, res) => {
       };
       const variantSnapshot = item.variant
         ? {
-            id: item.variant.id,
-            variantName: item.variant.variantName,
-            variantValue: item.variant.variantValue,
-            priceAdjustment: item.variant.priceAdjustment,
-          }
+          id: item.variant.id,
+          variantName: item.variant.variantName,
+          variantValue: item.variant.variantValue,
+          priceAdjustment: item.variant.priceAdjustment,
+        }
         : null;
 
       return {
@@ -173,17 +173,12 @@ export const getOrders = async (req, res) => {
     where: {
       userId: userId,
     },
-    // include: {
-    //   orderItems: {
-    //     include: {
-    //       product: true,
-    //       variant: true
-    //     }
-    //   }
-    // },
-    // orderBy: {
-    //   createdAt: 'desc'
-    // }
+    include: {
+      orderItems: true,
+    },
+    orderBy: {
+      createdAt: 'desc'
+    }
   });
   res.json({
     status: "success",
@@ -201,15 +196,17 @@ export const getOrderById = async (req, res) => {
       id: orderId,
       userId: userId,
     },
-    // include: {
-    //   orderItems: {
-    //     include: {
-    //       product: true,
-    //       variant: true
-    //     }
-    //   }
-    // }
+    include: {
+      orderItems: true,
+    }
   });
+
+  if (!order) {
+    return res.status(404).json({
+      status: "error",
+      message: "Order not found"
+    });
+  }
 
   res.json({
     status: "success",
@@ -218,9 +215,71 @@ export const getOrderById = async (req, res) => {
   });
 };
 
-// todo: implement update order functionality
 export const updateOrder = async (req, res) => {
-  res.json({ message: "Update order" });
+  const orderId = req.params.id;
+  const { status, paymentStatus } = req.body;
+
+  // Validation schema
+  const updateOrderSchema = z.object({
+    status: z.enum(['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
+    paymentStatus: z.enum(['PENDING', 'PAID', 'FAILED']).optional(),
+  });
+
+  const { success, data, error } = updateOrderSchema.safeParse({
+    status,
+    paymentStatus,
+  });
+
+  if (!success) {
+    return res.status(400).json({
+      status: "error",
+      message: "Invalid input",
+      errors: error.errors,
+    });
+  }
+
+  // Check if at least one field is being updated
+  if (!data.status && !data.paymentStatus) {
+    return res.status(400).json({
+      status: "error",
+      message: "At least one field (status or paymentStatus) must be provided",
+    });
+  }
+
+  // Get the existing order
+  const existingOrder = await prisma.order.findUnique({
+    where: { id: orderId },
+  });
+
+  if (!existingOrder) {
+    return res.status(404).json({
+      status: "error",
+      message: "Order not found"
+    });
+  }
+
+  // Prevent updates to completed or cancelled orders
+  if (existingOrder.status === 'DELIVERED' || existingOrder.status === 'CANCELLED') {
+    return res.status(400).json({
+      status: "error",
+      message: "Cannot update order that is already delivered or cancelled",
+    });
+  }
+
+  // Update the order
+  const updatedOrder = await prisma.order.update({
+    where: { id: orderId },
+    data: data,
+    include: {
+      orderItems: true,
+    },
+  });
+
+  res.json({
+    status: "success",
+    message: "Order updated successfully",
+    order: updatedOrder,
+  });
 };
 
 export const deleteOrder = async (req, res) => {
